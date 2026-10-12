@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgres://app_user:secure_pass@db:5432/saas_app
+    depends_on:
+      - db
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    command: node --dns-result-order=ipv4first --watch app.js
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=app_user
+      - POSTGRES_PASSWORD=secure_pass
+      - POSTGRES_DB=saas_app
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
