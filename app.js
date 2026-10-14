@@ -34,6 +34,12 @@ io.on("connection", (socket) => {
     console.log(`Socket ${socket.id} joined branch_${branch_id}`);
   });
 
+  // Customer joins their session-specific room to receive session lifecycle events
+  socket.on("join_session", (session_id) => {
+    socket.join(`session_${session_id}`);
+    console.log(`Socket ${socket.id} joined session_${session_id}`);
+  });
+
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
   });

@@ -3,10 +3,11 @@ const router = express.Router();
 const { generateBill, payBill } = require("../controllers/billingController");
 const { authCustomer } = require("../middlewares/auth");
 
-// Customer requests bill
+// Customer requests bill (transitions session → payment_pending, notifies staff)
 router.post("/generate", authCustomer, generateBill);
 
-// Customer (or mock payment gateway) pays the bill
-router.post("/:bill_id/pay", authCustomer, payBill);
+// NOTE: Bill settlement (marking paid + closing the session) is now exclusively
+// handled by staff via POST /api/admin/sessions/:id/settle
+// The payBill customer endpoint has been intentionally removed.
 
 module.exports = router;

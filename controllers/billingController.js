@@ -8,16 +8,20 @@ const generateBill = async (req, res, next) => {
 
     await client.query("BEGIN");
 
-    // 1. Calculate subtotal from orders belonging to this active session
+    // 1. Calculate subtotal and per-item GST from orders in this active session
     const itemsResult = await client.query(
-      `SELECT COALESCE(SUM(oi.price * oi.quantity), 0) as subtotal, count(DISTINCT o.id) as order_count 
+      `SELECT
+         COALESCE(SUM(oi.price * oi.quantity), 0)                        AS subtotal,
+         COALESCE(SUM(oi.price * oi.quantity * oi.gst_rate / 200.0), 0) AS cgst,
+         COALESCE(SUM(oi.price * oi.quantity * oi.gst_rate / 200.0), 0) AS sgst,
+         COUNT(DISTINCT o.id)                                             AS order_count
        FROM orders o
        JOIN order_items oi ON o.id = oi.order_id
        WHERE o.session_id = $1 AND o.status != 'cancelled'`,
       [session_id]
     );
 
-    const subtotal = parseFloat(itemsResult.rows[0].subtotal) || 0;
+    const subtotal   = parseFloat(itemsResult.rows[0].subtotal)    || 0;
     const orderCount = parseInt(itemsResult.rows[0].order_count, 10);
 
     if (orderCount === 0 || subtotal === 0) {
@@ -25,9 +29,9 @@ const generateBill = async (req, res, next) => {
       return res.status(400).json({ error: "No billable orders found for this table session." });
     }
 
-    // 2. Calculate Taxes (Assuming 5% GST total -> 2.5% CGST, 2.5% SGST)
-    const cgst = parseFloat((subtotal * 0.025).toFixed(2));
-    const sgst = parseFloat((subtotal * 0.025).toFixed(2));
+    // 2. GST split: each item's gst_rate is split equally into CGST + SGST
+    const cgst  = parseFloat(parseFloat(itemsResult.rows[0].cgst).toFixed(2));
+    const sgst  = parseFloat(parseFloat(itemsResult.rows[0].sgst).toFixed(2));
     const total = parseFloat((subtotal + cgst + sgst).toFixed(2));
 
     // 3. Upsert into bills table (1 bill per session)

@@ -55,6 +55,7 @@ const startSession = async (req, res, next) => {
       message: "Session started successfully", 
       token, 
       session_id: session.id,
+      session_status: session.status,   // 'active' | 'payment_pending' — lets client restore state
       branch_id: table.branch_id, 
       branch_name: table.branch_name, 
       table_number: table.table_number 
