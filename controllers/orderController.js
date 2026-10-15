@@ -67,7 +67,9 @@ const placeOrder = async (req, res, next) => {
     `, [orderId]);
 
     if (newOrderResult.rows.length > 0 && req.io) {
-      req.io.to('branch_' + branch_id).emit('new_order', newOrderResult.rows[0]);
+      const orderPayload = { ...newOrderResult.rows[0], session_id };
+      req.io.to('branch_' + branch_id).emit('new_order', orderPayload);
+      req.io.to('session_' + session_id).emit('new_order', orderPayload);
     }
 
     res.status(201).json({ 
@@ -179,19 +181,21 @@ const updateOrderStatus = async (req, res, next) => {
       [status, id, branch_id]
     );
 
-    if (result.rows.length === 0) {
+    const updatedOrder = result.rows[0];
+
+    if (!updatedOrder) {
       return res.status(404).json({ error: "Order not found" });
     }
 
     // Emit event to update kitchen and customer screens
     if (req.io) {
-      req.io.to('branch_' + branch_id).emit('order_updated', {
-        order_id: id,
-        status: status
-      });
+      const payload = { order_id: id, status };
+      req.io.to('branch_' + branch_id).emit('order_updated', payload);
+      // Also notify the customer who placed this order
+      req.io.to('session_' + updatedOrder.session_id).emit('order_updated', payload);
     }
 
-    res.json({ message: "Status updated", order: result.rows[0] });
+    res.json({ message: "Status updated", order: updatedOrder });
   } catch (error) {
     next(error);
   }

@@ -116,7 +116,9 @@ const settleSession = async (req, res, next) => {
     await client.query("COMMIT");
 
     if (req.io) {
-      req.io.to('branch_' + branch_id).emit('table_session_closed', { table_id: session.table_id, session_id: id });
+      const closedPayload = { table_id: session.table_id, session_id: id };
+      req.io.to('branch_' + branch_id).emit('table_session_closed', closedPayload);
+      req.io.to('session_' + id).emit('table_session_closed', closedPayload);
     }
 
     res.json({ message: "Session settled successfully", bill_number: `${fy}-${next_bill}` });

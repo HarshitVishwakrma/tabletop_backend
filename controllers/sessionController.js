@@ -33,7 +33,8 @@ const startSession = async (req, res, next) => {
        VALUES ($1, $2, $3, 'active') 
        ON CONFLICT (table_id) WHERE status <> 'closed' 
        DO UPDATE SET last_activity_at = NOW() 
-       RETURNING id, session_token, status`,
+       RETURNING id, session_token, status,
+         (xmax = 0) AS is_new_session`,
       [table.account_id, table.branch_id, table.id]
     );
     const session = sessionResult.rows[0];
@@ -55,7 +56,8 @@ const startSession = async (req, res, next) => {
       message: "Session started successfully", 
       token, 
       session_id: session.id,
-      session_status: session.status,   // 'active' | 'payment_pending' — lets client restore state
+      session_status: session.status,
+      is_new_session: session.is_new_session,
       branch_id: table.branch_id, 
       branch_name: table.branch_name, 
       table_number: table.table_number 
