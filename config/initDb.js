@@ -136,6 +136,17 @@ const SCHEMA_SQL = `
     PRIMARY KEY (user_id, branch_id)
   );
 
+  -- Role-based page access permissions (owner-configurable per account)
+  CREATE TABLE IF NOT EXISTS role_permissions (
+    id          SERIAL PRIMARY KEY,
+    account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    role        VARCHAR(20) NOT NULL CHECK (role IN ('manager', 'waiter', 'kitchen')),
+    page        VARCHAR(50) NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (account_id, role, page)
+  );
+  CREATE INDEX IF NOT EXISTS idx_role_permissions_account ON role_permissions(account_id, role);
+
   -- ---------------------------------------------------------------------
   -- 3. TABLES (QR) & SESSIONS
   -- ---------------------------------------------------------------------

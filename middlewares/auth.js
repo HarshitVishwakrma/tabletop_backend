@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const pool = require("../config/db");
 
 // Middleware for customer endpoints (requires an active table session)
 const authCustomer = (req, res, next) => {
@@ -29,7 +30,7 @@ const authCustomer = (req, res, next) => {
 };
 
 // Middleware for partner/admin endpoints (verifies staff JWT)
-const authPartner = (req, res, next) => {
+const authPartner = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: "Authorization header required" });
 
@@ -39,7 +40,24 @@ const authPartner = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecret_fallback');
     // decoded has { user_id, account_id, role }
-    req.partner = decoded;
+
+    // Check if user exists and is active in database
+    const userCheck = await pool.query(
+      "SELECT id, role, is_active FROM users WHERE id = $1 AND account_id = $2",
+      [decoded.user_id, decoded.account_id]
+    );
+
+    if (userCheck.rows.length === 0) {
+      return res.status(401).json({ error: "User no longer exists" });
+    }
+
+    const user = userCheck.rows[0];
+    if (user.is_active === false) {
+      return res.status(401).json({ error: "Account has been deactivated" });
+    }
+
+    // Attach fresh role from database to req.partner
+    req.partner = { ...decoded, role: user.role };
     next();
   } catch (err) {
     return res.status(401).json({ error: "Invalid or expired token" });
@@ -65,8 +83,21 @@ const authStaff = (req, res, next) => {
   });
 };
 
+// Middleware to restrict routes to specific roles (owners always bypass)
+const requireRole = (allowedRoles = []) => (req, res, next) => {
+  const role = req.partner?.role || req.staff?.role;
+  if (!role) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (role === "owner" || allowedRoles.includes(role)) {
+    return next();
+  }
+  return res.status(403).json({ error: `Access denied. Requires one of: ${allowedRoles.join(", ")}` });
+};
+
 module.exports = {
   authCustomer,
   authPartner,
-  authStaff
+  authStaff,
+  requireRole
 };

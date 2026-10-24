@@ -40,6 +40,12 @@ io.on("connection", (socket) => {
     console.log(`Socket ${socket.id} joined session_${session_id}`);
   });
 
+  // Staff user joins their user-specific room for account events
+  socket.on("join_user", (user_id) => {
+    socket.join(`user_${user_id}`);
+    console.log(`Socket ${socket.id} joined user_${user_id}`);
+  });
+
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
   });

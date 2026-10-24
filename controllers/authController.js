@@ -94,7 +94,7 @@ const loginPartner = async (req, res, next) => {
     }
 
     const result = await pool.query(
-      `SELECT u.id, u.account_id, u.name, u.password_hash, u.role, a.name as account_name, a.subdomain 
+      `SELECT u.id, u.account_id, u.name, u.password_hash, u.role, u.is_active, a.name as account_name, a.subdomain, a.status as account_status
        FROM users u 
        JOIN accounts a ON u.account_id = a.id 
        WHERE u.email = $1`,
@@ -110,6 +110,14 @@ const loginPartner = async (req, res, next) => {
 
     if (!isMatch) {
       return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    if (user.is_active === false) {
+      return res.status(403).json({ error: "Your account has been deactivated. Please contact your restaurant owner." });
+    }
+
+    if (user.account_status && user.account_status !== 'active') {
+      return res.status(403).json({ error: "Restaurant account is suspended or inactive" });
     }
 
     // Generate Partner JWT
@@ -136,7 +144,50 @@ const loginPartner = async (req, res, next) => {
   }
 };
 
+const verifyPartnerToken = async (req, res, next) => {
+  try {
+    const { user_id, account_id } = req.partner;
+
+    const result = await pool.query(
+      `SELECT u.id, u.account_id, u.name, u.email, u.role, u.is_active, a.name as account_name, a.subdomain, a.status as account_status
+       FROM users u 
+       JOIN accounts a ON u.account_id = a.id 
+       WHERE u.id = $1 AND u.account_id = $2`,
+      [user_id, account_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: "User no longer exists" });
+    }
+
+    const user = result.rows[0];
+    if (user.is_active === false) {
+      return res.status(401).json({ error: "Account has been deactivated" });
+    }
+
+    if (user.account_status && user.account_status !== 'active') {
+      return res.status(403).json({ error: "Account is suspended or inactive" });
+    }
+
+    res.json({
+      valid: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        account_id: user.account_id,
+        account_name: user.account_name,
+        subdomain: user.subdomain
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   registerPartner,
-  loginPartner
+  loginPartner,
+  verifyPartnerToken
 };
