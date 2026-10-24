@@ -189,7 +189,7 @@ const updateOrderStatus = async (req, res, next) => {
 
     // Emit event to update kitchen and customer screens
     if (req.io) {
-      const payload = { order_id: id, status };
+      const payload = { order_id: String(id), status, session_id: updatedOrder.session_id };
       req.io.to('branch_' + branch_id).emit('order_updated', payload);
       // Also notify the customer who placed this order
       req.io.to('session_' + updatedOrder.session_id).emit('order_updated', payload);

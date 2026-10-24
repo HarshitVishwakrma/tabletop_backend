@@ -52,12 +52,22 @@ const startSession = async (req, res, next) => {
       { expiresIn: '8h' }
     );
 
+    // Check if this session has any orders placed
+    const ordersResult = await pool.query(
+      `SELECT COUNT(*)::int as count FROM orders WHERE session_id = $1 AND status != 'cancelled'`,
+      [session.id]
+    );
+    const orderCount = ordersResult.rows[0]?.count || 0;
+    const hasOrders = orderCount > 0;
+
     res.json({ 
       message: "Session started successfully", 
       token, 
       session_id: session.id,
       session_status: session.status,
       is_new_session: session.is_new_session,
+      has_orders: hasOrders,
+      order_count: orderCount,
       branch_id: table.branch_id, 
       branch_name: table.branch_name, 
       table_number: table.table_number 
