@@ -158,7 +158,130 @@ const payBill = async (req, res, next) => {
   }
 };
 
+// Customer requests receipt / finalized bill
+const getCustomerBill = async (req, res, next) => {
+  try {
+    const { account_id, branch_id, session_id } = req.customer;
+
+    const sessionRes = await pool.query(
+      `SELECT
+         ts.id AS session_id,
+         ts.status AS session_status,
+         ts.started_at,
+         ts.ended_at,
+         ts.ended_by,
+         t.table_number,
+         b.id AS branch_id,
+         b.name AS branch_name,
+         b.address AS branch_address,
+         b.phone AS branch_phone,
+         a.id AS account_id,
+         a.name AS business_name,
+         a.gst_number
+       FROM table_sessions ts
+       JOIN tables t ON t.id = ts.table_id
+       JOIN branches b ON b.id = ts.branch_id
+       JOIN accounts a ON a.id = ts.account_id
+       WHERE ts.id = $1 AND ts.branch_id = $2 AND ts.account_id = $3`,
+      [session_id, branch_id, account_id]
+    );
+
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    const sInfo = sessionRes.rows[0];
+
+    const billRes = await pool.query(
+      `SELECT id, financial_year, bill_number, subtotal, discount, service_charge, cgst, sgst, rounding, total, payment_status, finalized_at, created_at
+       FROM bills
+       WHERE session_id = $1`,
+      [session_id]
+    );
+    const bill = billRes.rows[0] || null;
+
+    let payment = null;
+    if (bill) {
+      const payRes = await pool.query(
+        `SELECT method, amount, status, created_at
+         FROM payments
+         WHERE bill_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [bill.id]
+      );
+      payment = payRes.rows[0] || null;
+    }
+
+    const itemsRes = await pool.query(
+      `SELECT
+         oi.id,
+         oi.order_id,
+         oi.item_name AS name,
+         oi.quantity,
+         oi.price,
+         oi.gst_rate,
+         (oi.price * oi.quantity) AS total_price,
+         o.status AS order_status
+       FROM orders o
+       JOIN order_items oi ON o.id = oi.order_id
+       WHERE o.session_id = $1 AND o.status != 'cancelled'
+       ORDER BY o.placed_at ASC, oi.id ASC`,
+      [session_id]
+    );
+
+    let subtotal = 0;
+    let cgst = 0;
+    let sgst = 0;
+    let total = 0;
+
+    if (bill) {
+      subtotal = parseFloat(bill.subtotal) || 0;
+      cgst = parseFloat(bill.cgst) || 0;
+      sgst = parseFloat(bill.sgst) || 0;
+      total = parseFloat(bill.total) || 0;
+    } else {
+      subtotal = itemsRes.rows.reduce((sum, item) => sum + (parseFloat(item.total_price) || 0), 0);
+      cgst = parseFloat((subtotal * 0.025).toFixed(2));
+      sgst = parseFloat((subtotal * 0.025).toFixed(2));
+      total = parseFloat((subtotal + cgst + sgst).toFixed(2));
+    }
+
+    const invoiceNumber = bill && bill.financial_year && bill.bill_number
+      ? `${bill.financial_year}-${bill.bill_number}`
+      : (bill ? `BILL-${bill.id}` : `DRAFT-${session_id}`);
+
+    res.json({
+      receipt: {
+        session_id: sInfo.session_id,
+        session_status: sInfo.session_status,
+        started_at: sInfo.started_at,
+        ended_at: sInfo.ended_at,
+        table_number: sInfo.table_number,
+        branch_name: sInfo.branch_name,
+        branch_address: sInfo.branch_address,
+        branch_phone: sInfo.branch_phone,
+        business_name: sInfo.business_name,
+        gst_number: sInfo.gst_number || "Not Provided",
+        invoice_number: invoiceNumber,
+        bill_id: bill ? bill.id : null,
+        subtotal,
+        cgst,
+        sgst,
+        total,
+        payment_status: bill ? bill.payment_status : 'unpaid',
+        payment_method: payment ? payment.method : (bill?.payment_status === 'paid' ? 'cash' : null),
+        finalized_at: bill?.finalized_at || sInfo.ended_at || null,
+        items: itemsRes.rows
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   generateBill,
-  payBill
+  payBill,
+  getCustomerBill
 };

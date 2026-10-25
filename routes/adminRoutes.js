@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { getBranches, createBranch, getTables, createTable } = require("../controllers/adminController");
 const { authPartner, authStaff, requireRole } = require("../middlewares/auth");
-const { getSessions, settleSession, resumeSession, closeEmptySession, voidSession } = require("../controllers/adminSessionController");
+const { getSessions, getSessionBill, settleSession, resumeSession, closeEmptySession, voidSession } = require("../controllers/adminSessionController");
 const { getBranchOrders, updateOrderStatus } = require("../controllers/orderController");
 
 // Account level management (requires partner JWT, but no specific branch)
@@ -19,6 +19,7 @@ router.patch("/orders/:id/status", authStaff, updateOrderStatus);
 
 // Session management (staff)
 router.get("/sessions", authStaff, getSessions);
+router.get("/sessions/:id/bill", authStaff, getSessionBill);
 router.post("/sessions/:id/settle", authStaff, requireRole(["owner", "manager", "waiter"]), settleSession);
 router.post("/sessions/:id/resume", authStaff, requireRole(["owner", "manager"]), resumeSession);
 router.post("/sessions/:id/close-empty", authStaff, requireRole(["owner", "manager"]), closeEmptySession);

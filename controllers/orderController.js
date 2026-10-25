@@ -201,9 +201,55 @@ const updateOrderStatus = async (req, res, next) => {
   }
 };
 
+// Customer cancels an order (only if not ready or served yet)
+const cancelCustomerOrder = async (req, res, next) => {
+  try {
+    const { session_id, branch_id } = req.customer;
+    const { id } = req.params;
+
+    const existing = await pool.query(
+      "SELECT id, status, session_id, branch_id FROM orders WHERE id = $1 AND session_id = $2",
+      [id, session_id]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Order not found in this session" });
+    }
+
+    const order = existing.rows[0];
+
+    if (order.status === "ready" || order.status === "served" || order.status === "delivered") {
+      return res.status(400).json({ error: `Cannot cancel order #${id} because it is already ${order.status}` });
+    }
+
+    if (order.status === "cancelled") {
+      return res.status(400).json({ error: "Order is already cancelled" });
+    }
+
+    const result = await pool.query(
+      `UPDATE orders 
+       SET status = 'cancelled', updated_at = NOW(), cancelled_at = NOW() 
+       WHERE id = $1 AND session_id = $2 
+       RETURNING *`,
+      [id, session_id]
+    );
+
+    if (req.io) {
+      const payload = { order_id: String(id), status: 'cancelled', session_id };
+      req.io.to('branch_' + branch_id).emit('order_updated', payload);
+      req.io.to('session_' + session_id).emit('order_updated', payload);
+    }
+
+    res.json({ message: "Order cancelled successfully", order: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   placeOrder,
   getTableOrders,
   getBranchOrders,
-  updateOrderStatus
+  updateOrderStatus,
+  cancelCustomerOrder,
 };
